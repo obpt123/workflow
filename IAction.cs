@@ -11,7 +11,7 @@ namespace System.Workflows
     /// </summary>
     public interface IActionContext:IDictionary<string,object>
     {
-
+        IDictionary<string,object> Inputs { get; set; }
     }
     /// <summary>
     /// 表示开关
@@ -40,6 +40,8 @@ namespace System.Workflows
     /// </summary>
     public interface IAction
     {
+        string Name { get; }
+
         ActionResult Exec(IActionContext context);
     }
     /// <summary>
@@ -66,7 +68,7 @@ namespace System.Workflows
     /// </summary>
     public interface IActionValueDesc
     {
-        object GetValue(IActionContext context);
+        object GetValue(IActionContext context,Type targetType);
     }
     /// <summary>
     /// 表示Action的参数列表
@@ -80,9 +82,7 @@ namespace System.Workflows
         public string Name { get; set; }
         public IAction Action { get; set; }
         public ActionChainGroup OnSuccess { get; set; }
-
         public ActionChainGroup OnErrors { get; set; }
-
         public ActionChainGroup OnCompleted { get; set; }
     }
     public class ActionChainWrapper
@@ -101,11 +101,22 @@ namespace System.Workflows
     public class WorkFlow : IAction
     {
         public ActionChainGroup Actions { get; private set; }
+
+        public string Name
+        {
+            get;
+        }
+
         public ActionResult Exec(IActionContext context)
         {
             //this.Actions.RunGroup(context);
-            return ActionResult.FromContext(context);
+            // return ActionResult.FromContext(context);
+            return null;
         }
+    }
+    public class WorkflowInput
+    {
+
     }
 
 
@@ -114,6 +125,14 @@ namespace System.Workflows
     {
         public IEnumerable Source { get; set; }
         public ActionChainGroup Actions { get; private set; }
+
+        public string Name
+        {
+            get
+            {
+                throw new NotImplementedException();
+            }
+        }
 
         public ActionResult Exec(IActionContext context)
         {
@@ -125,7 +144,7 @@ namespace System.Workflows
                 }
             }
 
-            return ActionResult.FromContext(context);
+            return null;
         }
     }
 
@@ -145,8 +164,25 @@ namespace System.Workflows
 
     public interface IActionRunner
     {
+        IMetaDataService MetaDataService { get; set; }
         ActionResult RunAction(IActionEntry actionEntry, IActionContext context);
     }
+    public class SampleActionRunner : IActionRunner
+    {
+        public IMetaDataService MetaDataService { get; set; }
+        public ActionResult RunAction(IActionEntry actionEntry, IActionContext context)
+        {
+            var meta = this.MetaDataService.GetMetaData(actionEntry.Action.Name);
 
+            foreach (var argument in actionEntry.Arguments)
+            {
+                var pname = argument.Name;
+                var desc = argument.ValueDesc;
+                var value = desc.GetValue(context,null);
+            }
+
+            return actionEntry.Action.Exec(context);
+        }
+    }
 
 }
