@@ -9,9 +9,10 @@ namespace System.Workflows
     /// <summary>
     /// Action 执行的上下文
     /// </summary>
-    public interface IActionContext:IDictionary<string,object>
+    public interface IActionContext //: IDictionary<string, object>
     {
-        IDictionary<string,object> Inputs { get; set; }
+        IDictionary<string, object> Inputs { get; set; }
+        IDictionary<string,object> Vars { get; set; }
     }
     /// <summary>
     /// 表示开关
@@ -34,13 +35,14 @@ namespace System.Workflows
         /// </summary>
         public object Result { get; set; }
 
+
+
     }
     /// <summary>
     /// 表示Action的接口
     /// </summary>
     public interface IAction
     {
-        string Name { get; }
 
         ActionResult Exec(IActionContext context);
     }
@@ -49,9 +51,8 @@ namespace System.Workflows
     /// </summary>
     public interface IActionEntry
     {
-        IAction Action { get; set; }
-
-        ActionArgumentList Arguments { get; set; }
+        string ActionRef { get; set; }
+        List<ActionArgument> Arguments { get; set; }
     }
     /// <summary>
     /// 表示Action的参数信息
@@ -68,19 +69,12 @@ namespace System.Workflows
     /// </summary>
     public interface IActionValueDesc
     {
-        object GetValue(IActionContext context,Type targetType);
-    }
-    /// <summary>
-    /// 表示Action的参数列表
-    /// </summary>
-    public class ActionArgumentList : List<ActionArgument>
-    {
-
+        object GetValue(IActionContext context);
     }
     public class ActionChain
     {
         public string Name { get; set; }
-        public IAction Action { get; set; }
+        public IActionEntry Action { get; set; }
         public ActionChainGroup OnSuccess { get; set; }
         public ActionChainGroup OnErrors { get; set; }
         public ActionChainGroup OnCompleted { get; set; }
@@ -100,12 +94,8 @@ namespace System.Workflows
 
     public class WorkFlow : IAction
     {
-        public ActionChainGroup Actions { get; private set; }
+        public ActionChain Action { get; private set; }
 
-        public string Name
-        {
-            get;
-        }
 
         public ActionResult Exec(IActionContext context)
         {
@@ -114,14 +104,11 @@ namespace System.Workflows
             return null;
         }
     }
-    public class WorkflowInput
-    {
-
-    }
 
 
 
-    public class Loop:IAction
+
+    public class Loop : IAction
     {
         public IEnumerable Source { get; set; }
         public ActionChainGroup Actions { get; private set; }
@@ -140,7 +127,7 @@ namespace System.Workflows
             {
                 foreach (var item in Source)
                 {
-                   // this.Actions.RunGroup(context);
+                    // this.Actions.RunGroup(context);
                 }
             }
 
@@ -167,22 +154,90 @@ namespace System.Workflows
         IMetaDataService MetaDataService { get; set; }
         ActionResult RunAction(IActionEntry actionEntry, IActionContext context);
     }
-    public class SampleActionRunner : IActionRunner
+    public class ActionRunner : IActionRunner
     {
+        static ActionRunner()
+        {
+            Default = new ActionRunner();
+        }
+        public static IActionRunner Default { get; private set; }
         public IMetaDataService MetaDataService { get; set; }
+        public IActionBuilder ActionBuildService { get; set; }
         public ActionResult RunAction(IActionEntry actionEntry, IActionContext context)
         {
-            var meta = this.MetaDataService.GetMetaData(actionEntry.Action.Name);
-
-            foreach (var argument in actionEntry.Arguments)
+            try
             {
-                var pname = argument.Name;
-                var desc = argument.ValueDesc;
-                var value = desc.GetValue(context,null);
+                var meta = this.GetActionMeta(actionEntry);
+                var action = this.CreateAction(meta);
+                this.SetInputArguments(meta, action, actionEntry, context);
+                return action.Exec(context);
             }
+            catch (Exception ex)
+            {
+                return new ActionResult()
+                {
+                    Error = ex
+                };
+            }
+        }
 
-            return actionEntry.Action.Exec(context);
+        private ActionMeta GetActionMeta(IActionEntry actionEntry)
+        {
+            return this.MetaDataService.GetMetaData(actionEntry.ActionRef);
+        }
+        private IAction CreateAction(ActionMeta meta)
+        {
+            return this.ActionBuildService.BuildAction(meta.ContentType, meta.Content);
+        }
+        private void SetInputArguments(ActionMeta meta, IAction action, IActionEntry actionEntry, IActionContext context)
+        {
+            Dictionary<string, object> inputValues = new Dictionary<string, object>();
+            foreach (var inputMeta in meta.Inputs ?? new List<ActionInputMeta>())
+            {
+                var input = actionEntry.Arguments.SingleOrDefault(p => p.Name == inputMeta.Name);
+                if (input == null)
+                {
+                    if (inputMeta.DefaultValue == null)
+                    {
+                        if (inputMeta.IsRequired)
+                        {
+                            throw new ActionException($"参数[{input.Name}]是必须的。");
+                        }
+                    }
+                    else
+                    {
+                        inputValues.Add(inputMeta.Name,Convert.ChangeType(inputMeta.DefaultValue,inputMeta.Type));
+                    }
+                }
+                else
+                {
+                    var value = input.ValueDesc.GetValue(context);
+                    inputValues.Add(inputMeta.Name, Convert.ChangeType(value,inputMeta.Type));
+                }
+            }
+            if (meta.Kind == ActionKind.Action)
+            {
+                foreach (var kv in inputValues)
+                {
+                    action.GetType().GetProperty(kv.Key).SetValue(action, kv.Value,null);
+                }
+            }
+            else
+            {
+                context.Inputs = inputValues;
+            }
         }
     }
 
+
+    [Serializable]
+    public class ActionException : Exception
+    {
+        public ActionException() { }
+        public ActionException(string message) : base(message) { }
+        public ActionException(string message, Exception inner) : base(message, inner) { }
+        protected ActionException(
+          Runtime.Serialization.SerializationInfo info,
+          Runtime.Serialization.StreamingContext context) : base(info, context) { }
+    }
 }

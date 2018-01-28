@@ -5,13 +5,22 @@ using System.Text;
 
 namespace System.Workflows
 {
-    public class ActionMetaData
+    public class ActionMeta
     {
-        public string ActionName { get; set; }
+        public string Ref { get; set; }
 
         public ActionKind Kind { get; set; }
 
-        public ArgumentMetaInfoCollection Arguments { get; set; }
+        public List<ActionInputMeta> Inputs { get; set; }
+
+        public string ContentType { get; set; }
+
+        public string Content { get; set; }
+    }
+    public class ActionContentTypes
+    {
+        public const string TypeName = "typename";
+        public const string Xml = "xml";
     }
     public enum ActionKind
     {
@@ -19,7 +28,7 @@ namespace System.Workflows
         Action
     }
 
-    public class ArgumentMetaInfo
+    public class ActionInputMeta
     {
         public string Name { get; set; }
 
@@ -29,14 +38,12 @@ namespace System.Workflows
 
         public bool IsRequired { get; set; }
     }
-
-    public class ArgumentMetaInfoCollection:List<ArgumentMetaInfo>
-    {
-
-    }
-
     public interface IMetaDataService
     {
-        ActionMetaData GetMetaData(string actionName);
+        ActionMeta GetMetaData(string actionRef);
+    }
+    public interface IActionBuilder
+    {
+        IAction BuildAction(string contentType, string content);
     }
 }
