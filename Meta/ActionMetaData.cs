@@ -42,7 +42,7 @@ namespace System.Workflows
     {
         ActionMeta GetMetaData(string actionRef);
     }
-    public interface IActionBuilder
+    public interface IActionBuildService
     {
         IAction BuildAction(string contentType, string content);
     }
