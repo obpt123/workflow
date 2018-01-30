@@ -46,4 +46,34 @@ namespace System.Workflows
     {
         IAction BuildAction(string contentType, string content);
     }
+
+    [AttributeUsage(AttributeTargets.Class, Inherited = false, AllowMultiple = false)]
+    public sealed class ActionAttribute : Attribute
+    {
+
+        readonly string refName;
+
+        public ActionAttribute(string refName)
+        {
+            this.refName = refName;
+        }
+
+        public string RefName
+        {
+            get { return this.refName; }
+        }
+        public string Description { get; set; }
+    }
+
+    [AttributeUsage(AttributeTargets.Property, Inherited = true, AllowMultiple = false)]
+    public sealed class ActionInputAttribute : Attribute
+    {
+        public string Name { get; set; }
+
+        public string Description { get; set; }
+
+        public object Default { get; set; }
+
+        public bool IsRequired { get; set; }
+    }
 }

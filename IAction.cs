@@ -14,7 +14,6 @@ namespace System.Workflows
         IActionContext Parent { get; }
         Dictionary<string, object> Inputs { get; set; }
         Dictionary<string,object> Vars { get; set; }
-
         Dictionary<string,object> Outputs { get; set; }
 
         List<IActionContext> SubContexts { get; }
@@ -87,6 +86,14 @@ namespace System.Workflows
     /// </summary>
     public class ActionResult
     {
+        public ActionResult()
+        {
+
+        }
+        public ActionResult(object result)
+        {
+            this.Result = result;
+        }
         /// <summary>
         /// 执行过程的错误
         /// </summary>
