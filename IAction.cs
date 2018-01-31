@@ -170,7 +170,6 @@ namespace System.Workflows
     public class ActionChain:IActionEntry
     {
         public string Name { get; set; }
-        public IActionEntry Action { get; set; }
         public ActionChainGroup OnSuccess { get; set; }
         public ActionChainGroup OnErrors { get; set; }
         public ActionChainGroup OnCompleted { get; set; }
@@ -273,7 +272,18 @@ namespace System.Workflows
         }
     }
 
+    public class For : IAction, INewContext
+    {
+        public int Start { get; set; }
+        public int Count { get; set; }
+        public int Step { get; set; }
 
+        public string ItemName { get; set; }
+        public ActionResult Exec(IActionContext context)
+        {
+            throw new NotImplementedException();
+        }
+    }
 
     public enum SwitchKind
     {
