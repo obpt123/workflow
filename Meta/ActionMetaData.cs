@@ -17,11 +17,7 @@ namespace System.Workflows
 
         public string Content { get; set; }
     }
-    public class ActionContentTypes
-    {
-        public const string TypeName = "typename";
-        public const string Xml = "xml";
-    }
+
     public enum ActionKind
     {
         Workflow,
@@ -75,5 +71,106 @@ namespace System.Workflows
         public object Default { get; set; }
 
         public bool IsRequired { get; set; }
+    }
+
+    public interface IActionSerializer
+    {
+        IAction DeSerialize(string content);
+        string Serialize(IAction action);
+    }
+
+    public class ActionTypeNameSerializer : IActionSerializer
+    {
+        public const string ContentType = "action/typename";
+        public IAction DeSerialize(string content)
+        {
+            var type = Type.GetType(content);
+            return Activator.CreateInstance(type) as IAction;
+        }
+
+        public string Serialize(IAction action)
+        {
+            return action.GetType().AssemblyQualifiedName;
+        }
+    }
+
+    public class WorkflowJsonSerializer : IActionSerializer
+    {
+        public const string ContentType = "workflow/json";
+
+        public IAction DeSerialize(string content)
+        {
+            throw new NotImplementedException();
+        }
+
+        public string Serialize(IAction action)
+        {
+            throw new NotImplementedException();
+        }
+        #region InnerClass
+
+        public class WorkflowInfo
+        {
+            public string name { get; set; }
+            public string description { get; set; }
+            public Dictionary<string, InputInfo> inputdefines { get; set; }
+            public string entry { get; set; }
+            public Dictionary<string,ActionInfo> actions { get; set; }
+        }
+
+        public class InputInfo
+        {
+            public string type { get; set; }
+            public int @default { get; set; }
+            public bool isrequired { get; set; }
+            public string description { get; set; }
+        }
+
+
+
+        public class ActionInfo
+        {
+            public string type { get; set; }
+            public Dictionary<string,object> input { get; set; }
+            public Dictionary<string, object> output { get; set; }
+            public TaskGroup onsuccess { get; set; }
+            public TaskGroup onerror { get; set; }
+            public string entry { get; set; }
+            public Dictionary<string, ActionInfo> actions { get; set; }
+        }
+
+
+
+
+        public class TaskGroup
+        {
+            public string Kind { get; set; }
+
+            public List<Task> Tasks { get; set; }
+        }
+        public class Task
+        {
+            public string Name { get; set; }
+        }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        #endregion
     }
 }

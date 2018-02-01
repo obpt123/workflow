@@ -126,6 +126,8 @@ namespace System.Workflows
         string Name { get; set; }
         string ActionRef { get; set; }
         List<ActionInput> Inputs { get; set; }
+
+        IAction GetAction();
     }
     /// <summary>
     /// 表示Action的参数信息
@@ -179,7 +181,11 @@ namespace System.Workflows
         public List<ActionInput> Inputs { get; set; }
 
         public List<ActionOutput> Outputs { get; set; }
-        
+
+        public IAction GetAction()
+        {
+            throw new NotImplementedException();
+        }
     }
     public class ActionChainWrapper
     {
@@ -200,12 +206,12 @@ namespace System.Workflows
     }
     public class WorkFlow : IAction,INewContext
     {
-        public ActionChain Action { get; private set; }
+        public ActionChain Entry { get;  set; }
 
 
         public ActionResult Exec(IActionContext context)
         {
-            this.RunAction(Action, context);
+            this.RunAction(Entry, context);
             return ActionResult.FromContext(context);
         }
         private void RunActionGroup(ActionChainGroup group, IActionContext context)
@@ -226,35 +232,38 @@ namespace System.Workflows
         }
         private void RunAction(ActionChain action,IActionContext context)
         {
-            var res = ActionRunner.Default.RunAction(Action, context);
+            var res = ActionRunner.Default.RunAction(Entry, context);
             this.PublishOutput(res, context);
             if (res.IsSuccess)
             {
-                this.RunActionGroup(Action.OnSuccess, context);
+                this.RunActionGroup(Entry.OnSuccess, context);
             }
             else
             {
-                this.RunActionGroup(Action.OnErrors, context);
+                this.RunActionGroup(Entry.OnErrors, context);
             }
-            this.RunActionGroup(Action.OnCompleted, context);
+            this.RunActionGroup(Entry.OnCompleted, context);
         }
         private void PublishOutput(ActionResult result, IActionContext context)
         {
-            if (this.Action.Outputs == null) return;
-            foreach (var output in this.Action.Outputs)
+            if (this.Entry.Outputs == null) return;
+            foreach (var output in this.Entry.Outputs)
             {
                 output.Output(result, context);
             }
         }
     }
 
+    public interface IChainEntry
+    {
+        ActionChain Entry { get; set; }
+    }
 
 
-
-    public class Loop : IAction,INewContext
+    public class Loop : IAction,INewContext, IChainEntry
     {
         public IEnumerable Source { get; set; }
-        public ActionChainGroup Actions { get; private set; }
+        public ActionChain Entry { get; set; }
 
 
 
@@ -279,6 +288,7 @@ namespace System.Workflows
         public int Step { get; set; }
 
         public string ItemName { get; set; }
+        public ActionChain Entry { get; set; }
         public ActionResult Exec(IActionContext context)
         {
             throw new NotImplementedException();

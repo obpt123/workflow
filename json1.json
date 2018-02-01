@@ -1,5 +1,7 @@
 ﻿{
-    "input": {
+    "name": "demo.num",
+    "description": "数字乘法表",
+    "input-defines": {
         "val": {
             "type": "int",
             "default": 5,
@@ -7,8 +9,6 @@
             "description": "参数值"
         }
     },
-    "name": "demo.num",
-    "description": "数字乘法表",
     "entry": "loop1",
     "actions": {
         "loop1": {
@@ -16,7 +16,6 @@
             "input": {
                 "start": 1,
                 "count": "${val}",
-                "entry": "loop2",
                 "item-name": "i"
             },
             "output": {
@@ -24,29 +23,37 @@
             },
             "on-success": {
                 "tasks": [
-                    {"name": "sendMail"}
+                    { "name": "sendMail" }
                 ]
-            }
-            
-        },
-        "loop2": {
-            "type": "core.loop",
-            "input": {
-                "start": 1,
-                "count": "${i}",
-                "entry": "noop",
-                "item-name": "j"
             },
-            "output": {
-                "line": "${lastvalue.Select(p=>p.exp).Join(\",\")}"
+            "entry": "loop2",
+            "actions": {
+                "loop2": {
+                    "type": "core.loop",
+                    "input": {
+                        "start": 1,
+                        "count": "${i}",
+                        "entry": "noop",
+                        "item-name": "j"
+                    },
+                    "output": {
+                        "line": "${lastvalue.Select(p=>p.exp).Join(\",\")}"
+                    },
+                    "entry": "loop2",
+                    "actions": {
+                        "noop": {
+                            "type": "core.loop",
+                            "output": {
+                                "exp": "${i}*${j}=${i*j}"
+                            }
+                        }
+                    }
+                    
+                }
             }
         },
-        "noop": {
-            "type": "core.loop",
-            "output": {
-                "exp": "${i}*${j}=${i*j}"
-            }
-        }
+        
+        
         "sendMail": {
             "type": "net.mail",
             "input": {
