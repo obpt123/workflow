@@ -45,6 +45,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="json1.json" />
+    <None Include="json2.json" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 

@@ -13,9 +13,8 @@ namespace System.Workflows
 
         public List<ActionInputMeta> Inputs { get; set; }
 
-        public string ContentType { get; set; }
+        public string DisplayFormat { get; set; }
 
-        public string Content { get; set; }
     }
 
     public enum ActionKind
@@ -34,14 +33,18 @@ namespace System.Workflows
 
         public bool IsRequired { get; set; }
     }
-    public interface IMetaDataService
+    public class ActionInfo
     {
-        ActionMeta GetMetaData(string actionRef);
+        public ActionMeta Meta { get; set; }
+
+        public IAction Action { get; set; }
     }
-    public interface IActionBuildService
+
+    public interface IActionFactoryService
     {
-        IAction BuildAction(string contentType, string content);
+        ActionInfo GetAction(string actionRef);
     }
+
 
     [AttributeUsage(AttributeTargets.Class, Inherited = false, AllowMultiple = false)]
     public sealed class ActionAttribute : Attribute
@@ -75,22 +78,26 @@ namespace System.Workflows
 
     public interface IActionSerializer
     {
-        IAction DeSerialize(string content);
-        string Serialize(IAction action);
+        ActionInfo DeSerialize(string content);
+        string Serialize(ActionInfo action);
     }
 
     public class ActionTypeNameSerializer : IActionSerializer
     {
         public const string ContentType = "action/typename";
-        public IAction DeSerialize(string content)
+        public ActionInfo DeSerialize(string content)
         {
             var type = Type.GetType(content);
-            return Activator.CreateInstance(type) as IAction;
+            var action= Activator.CreateInstance(type) as IAction;
+            return new ActionInfo()
+            {
+                Action = action
+            };
         }
 
-        public string Serialize(IAction action)
+        public string Serialize(ActionInfo action)
         {
-            return action.GetType().AssemblyQualifiedName;
+            return action.Action.GetType().AssemblyQualifiedName;
         }
     }
 
@@ -98,12 +105,12 @@ namespace System.Workflows
     {
         public const string ContentType = "workflow/json";
 
-        public IAction DeSerialize(string content)
+        public ActionInfo DeSerialize(string content)
         {
             throw new NotImplementedException();
         }
 
-        public string Serialize(IAction action)
+        public string Serialize(ActionInfo action)
         {
             throw new NotImplementedException();
         }
@@ -128,7 +135,7 @@ namespace System.Workflows
 
 
 
-        public class ActionInfo
+        public class ActionInfo2
         {
             public string type { get; set; }
             public Dictionary<string,object> input { get; set; }
@@ -150,6 +157,7 @@ namespace System.Workflows
         }
         public class Task
         {
+            public string Switch { get; set; }
             public string Name { get; set; }
         }
 
