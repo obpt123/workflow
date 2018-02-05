@@ -2,6 +2,8 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
+using System.Web.Script.Serialization;
 
 namespace System.Workflows
 {
@@ -11,9 +13,11 @@ namespace System.Workflows
 
         public ActionKind Kind { get; set; }
 
-        public List<ActionInputMeta> Inputs { get; set; }
+        public List<ActionInputMeta> Parameters { get; set; }
 
         public string DisplayFormat { get; set; }
+
+        public string Description { get; set; }
 
     }
 
@@ -32,8 +36,10 @@ namespace System.Workflows
         public object DefaultValue { get; set; }
 
         public bool IsRequired { get; set; }
+
+        public string Description { get; set; }
     }
-    public class ActionInfo
+    public class ActionEntry
     {
         public ActionMeta Meta { get; set; }
 
@@ -42,7 +48,7 @@ namespace System.Workflows
 
     public interface IActionFactoryService
     {
-        ActionInfo GetAction(string actionRef);
+        ActionEntry GetAction(string actionRef);
     }
 
 
@@ -78,24 +84,24 @@ namespace System.Workflows
 
     public interface IActionSerializer
     {
-        ActionInfo DeSerialize(string content);
-        string Serialize(ActionInfo action);
+        ActionEntry DeSerialize(string content);
+        string Serialize(ActionEntry action);
     }
 
     public class ActionTypeNameSerializer : IActionSerializer
     {
         public const string ContentType = "action/typename";
-        public ActionInfo DeSerialize(string content)
+        public ActionEntry DeSerialize(string content)
         {
             var type = Type.GetType(content);
-            var action= Activator.CreateInstance(type) as IAction;
-            return new ActionInfo()
+            var action = Activator.CreateInstance(type) as IAction;
+            return new ActionEntry()
             {
                 Action = action
             };
         }
 
-        public string Serialize(ActionInfo action)
+        public string Serialize(ActionEntry action)
         {
             return action.Action.GetType().AssemblyQualifiedName;
         }
@@ -105,43 +111,177 @@ namespace System.Workflows
     {
         public const string ContentType = "workflow/json";
 
-        public ActionInfo DeSerialize(string content)
+        public ActionEntry DeSerialize(string content)
         {
-            throw new NotImplementedException();
+            JavaScriptSerializer serializer = new JavaScriptSerializer();
+            var workflowInfo = serializer.Deserialize<WorkflowInfo>(content);
+            var parameters = from p in workflowInfo.parameters ?? new Dictionary<string, ParameterInfo>()
+                             select new ActionInputMeta()
+                             {
+                                 Name = p.Key,
+                                 Type = GetTypeByName(p.Value.type),
+                                 IsRequired = p.Value.required,
+                                 DefaultValue = p.Value.@default,
+                                 Description = p.Value.description
+                             };
+
+            return new ActionEntry()
+            {
+                Meta = new ActionMeta()
+                {
+                    Ref = workflowInfo.name,
+                    Kind = ActionKind.Workflow,
+                    Description = workflowInfo.description,
+                    DisplayFormat = workflowInfo.displayformat,
+                    Parameters = parameters.ToList()
+
+                },
+                Action = new WorkFlow()
+                {
+
+                }  
+            };
+
         }
 
-        public string Serialize(ActionInfo action)
+
+        private Type GetTypeByName(string typeName)
+        {
+            return Type.GetType(typeName);
+
+        }
+        private List<IActionInput> GetInputs(Dictionary<string,object> inputs)
+        {
+            List<IActionInput> res = new List<IActionInput>();
+            if (inputs != null)
+            {
+                foreach (var kv in inputs)
+                {
+                    if (kv.Value is string)
+                    {
+                        string str = kv.Value as string;
+                        if (Regex.IsMatch(str, @"\${.+}"))
+                        {
+                            res.Add(new TranslateValueArgument()
+                            {
+                                Name = kv.Key,
+                                Expression = str
+                            });
+                        }
+                        else
+                        {
+                            res.Add(new OriginalValueArgument()
+                            {
+                                Name = kv.Key,
+                                Value = str
+                            });
+                        }
+                    }
+                    else
+                    {
+                        res.Add(new OriginalValueArgument()
+                        {
+                             Name=kv.Key,
+                             Value=kv.Value
+                        });
+                    }
+                }
+            }
+            return res;
+        }
+
+        private List<IActionOutput> GetOutputs(Dictionary<string, object> outputs)
+        {
+            List<IActionOutput> res = new List<IActionOutput>();
+            if (outputs != null)
+            {
+                foreach (var kv in outputs)
+                {
+                    if (kv.Value is string)
+                    {
+                        string str = kv.Value as string;
+                        if (Regex.IsMatch(str, @"\${.+}"))
+                        {
+                            res.Add(new TranslateValueArgument()
+                            {
+                                Name = kv.Key,
+                                Expression = str
+                            });
+                        }
+                        else
+                        {
+                            res.Add(new OriginalValueArgument()
+                            {
+                                Name = kv.Key,
+                                Value = str
+                            });
+                        }
+                    }
+                    else
+                    {
+                        res.Add(new OriginalValueArgument()
+                        {
+                            Name = kv.Key,
+                            Value = kv.Value
+                        });
+                    }
+                }
+            }
+            return res;
+        }
+        private ActionChain BuildChain(string entry, Dictionary<string, ActionInfo> actions)
+        {
+            if (!actions.ContainsKey(entry))
+            {
+                throw new ActionException($"不存在{entry}");
+            }
+            var info = actions[entry];
+            var chain = new ActionChain()
+            {
+                ActionRef = info.type,
+                Name = entry,
+                 Inputs=GetInputs(info.input),
+                  Outputs= GetOutputs(info.output),
+                // Inputs=
+            };
+
+            return chain;
+        }
+        public string Serialize(ActionEntry action)
         {
             throw new NotImplementedException();
         }
         #region InnerClass
 
-        public class WorkflowInfo
+        class WorkflowInfo
         {
             public string name { get; set; }
             public string description { get; set; }
-            public Dictionary<string, InputInfo> inputdefines { get; set; }
+
+            public string displayformat { get; set; }
+            public Dictionary<string, ParameterInfo> parameters { get; set; }
             public string entry { get; set; }
-            public Dictionary<string,ActionInfo> actions { get; set; }
+            public Dictionary<string, ActionInfo> actions { get; set; }
         }
 
-        public class InputInfo
+        class ParameterInfo
         {
             public string type { get; set; }
-            public int @default { get; set; }
-            public bool isrequired { get; set; }
+            public object @default { get; set; }
+            public bool required { get; set; }
             public string description { get; set; }
         }
 
 
 
-        public class ActionInfo2
+        class ActionInfo
         {
             public string type { get; set; }
-            public Dictionary<string,object> input { get; set; }
+            public Dictionary<string, object> input { get; set; }
             public Dictionary<string, object> output { get; set; }
             public TaskGroup onsuccess { get; set; }
             public TaskGroup onerror { get; set; }
+            public TaskGroup oncompleted { get; set; }
             public string entry { get; set; }
             public Dictionary<string, ActionInfo> actions { get; set; }
         }
@@ -149,16 +289,16 @@ namespace System.Workflows
 
 
 
-        public class TaskGroup
+        class TaskGroup
         {
-            public string Kind { get; set; }
+            public string kind { get; set; }
 
-            public List<Task> Tasks { get; set; }
+            public List<Task> tasks { get; set; }
         }
-        public class Task
+        class Task
         {
-            public string Switch { get; set; }
-            public string Name { get; set; }
+            public string @switch { get; set; }
+            public string name { get; set; }
         }
 
 

@@ -136,55 +136,48 @@ namespace System.Workflows
     /// <summary>
     /// 表示Action的执行入口
     /// </summary>
-    public interface IActionEntry
+
+
+    public interface IActionInput
     {
         string Name { get; set; }
-        string ActionRef { get; set; }
-        List<ActionInput> Inputs { get; set; }
-
-        //IAction GetAction();
+        object GetValue(IActionContext context);
     }
-    /// <summary>
-    /// 表示Action的参数信息
-    /// </summary>
-    public class ActionInput
+
+    public class OriginalValueArgument : IActionInput, IActionOutput
     {
         public string Name { get; set; }
 
-        public IActionInputValueDesc ValueDesc { get; set; }
+        public object Value { get; set; }
 
         public object GetValue(IActionContext context)
         {
-            return this.ValueDesc.GetValue(context);
+            return Value;
         }
-
     }
-    public class ActionOutput
+    public class TranslateValueArgument : IActionInput, IActionOutput
     {
         public string Name { get; set; }
 
-        public IActionOutputValueDesc ValueDesc { get; set; }
+        public string Expression { get; set; }
 
-        public void Output(ActionResult result, IActionContext context)
+        public object GetValue(IActionContext context)
         {
-            var value = this.ValueDesc.GetValue(result, context);
-
-            context.Outputs[this.Name] = value;
+            return null; ;
         }
+    }
+
+    public interface IActionOutput
+    {
+        string Name { get; set; }
+
+
+        object GetValue(IActionContext context);
 
     }
-    /// <summary>
-    /// 表示Action参数值的描述
-    /// </summary>
-    public interface IActionInputValueDesc
-    {
-        object GetValue(IActionContext context);
-    }
-    public interface IActionOutputValueDesc
-    {
-        object GetValue(ActionResult result, IActionContext context);
-    }
-    public class ActionChain:IActionEntry
+
+
+    public class ActionChain
     {
         public string Name { get; set; }
         public ActionChainGroup OnSuccess { get; set; }
@@ -193,9 +186,9 @@ namespace System.Workflows
 
         public string ActionRef { get; set; }
 
-        public List<ActionInput> Inputs { get; set; }
+        public List<IActionInput> Inputs { get; set; }
 
-        public List<ActionOutput> Outputs { get; set; }
+        public List<IActionOutput> Outputs { get; set; }
 
         public ActionChain SubEntry { get; set; }
     }
@@ -291,10 +284,10 @@ namespace System.Workflows
 
 
 
-        private static Dictionary<string, object> GetInputArguments(ActionInfo action,ActionChain step, IActionContext context)
+        private static Dictionary<string, object> GetInputArguments(ActionEntry action,ActionChain step, IActionContext context)
         {
             Dictionary<string, object> inputValues = new Dictionary<string, object>();
-            foreach (var inputMeta in action.Meta.Inputs ?? new List<ActionInputMeta>())
+            foreach (var inputMeta in action.Meta.Parameters ?? new List<ActionInputMeta>())
             {
                 var input = step.Inputs.SingleOrDefault(p => p.Name == inputMeta.Name);
                 if (input == null)
@@ -313,7 +306,7 @@ namespace System.Workflows
                 }
                 else
                 {
-                    var value = input.ValueDesc.GetValue(context);
+                    var value = input.GetValue(context);
                     inputValues.Add(inputMeta.Name, Convert.ChangeType(value, inputMeta.Type));
                 }
             }
@@ -324,9 +317,11 @@ namespace System.Workflows
         {
 
             PublishLastRes(context, result);
-            foreach (var output in chain.Outputs??new List<ActionOutput>())
+            foreach (var output in chain.Outputs??new List<IActionOutput>())
             {
-                output.Output(result, context);
+                var val = output.GetValue(context);
+                context.Vars[output.Name] = val;
+                //output.Output(result, context);
             }
         }
         private static void PublishLastRes(IActionContext context, ActionResult res)
