@@ -1,66 +1,80 @@
 ﻿{
-    "name": "demo.num",
-    "description": "数字乘法表",
-    "input-defines": {
-        "val": {
-            "type": "int",
-            "default": 5,
-            "is-required": true,
-            "description": "参数值"
+    "meta": {
+        "name": "demo.num",
+        "description": "数字乘法表",
+        "displayformat": "{val}*{val}乘法表",
+        "inputdefines": {
+            "val": {
+                "type": "int",
+                "default": 5,
+                "required": true,
+                "description": "参数值"
+            }
         }
     },
-    "entry": "loop1",
-    "actions": {
-        "loop1": {
-            "type": "core.for",
-            "input": {
-                "start": 1,
-                "count": "${val}",
-                "item-name": "i"
-            },
-            "output": {
-                "content": "${lastvalue.Select(p=>p.line).Join(\"\n\")}"
-            },
-            "on-success": {
-                "tasks": [
-                    { "name": "sendMail" }
-                ]
-            },
-            "entry": "loop2",
-            "actions": {
-                "loop2": {
-                    "type": "core.loop",
-                    "input": {
-                        "start": 1,
-                        "count": "${i}",
-                        "entry": "noop",
-                        "item-name": "j"
-                    },
-                    "output": {
-                        "line": "${lastvalue.Select(p=>p.exp).Join(\",\")}"
-                    },
-                    "entry": "loop2",
-                    "actions": {
-                        "noop": {
-                            "type": "core.loop",
-                            "output": {
-                                "exp": "${i}*${j}=${i*j}"
+
+    "setup": {
+
+    },
+    "body": {
+        "entry": "loop1",
+        "actions": {
+            "loop1": {
+                "type": "core.for",
+                "input": {
+                    "start": 1,
+                    "count": "${val}",
+                    "item-name": "i"
+                },
+                "output": {
+                    "content": "${lastvalue.Select(p=>p.line).Join(\"\n\")}"
+                },
+                "onsuccess": {
+                    "tasks": [
+                        { "name": "sendMail" }
+                    ]
+                },
+                "entry": "loop2",
+                "actions": {
+                    "loop2": {
+                        "type": "core.for",
+                        "input": {
+                            "start": 1,
+                            "count": "${i}",
+                            "entry": "noop",
+                            "item-name": "j"
+                        },
+                        "output": {
+                            "line": "${lastvalue.Select(p=>p.exp).Join(\",\")}"
+                        },
+                        "entry": "loop2",
+                        "actions": {
+                            "noop": {
+                                "type": "core.noop",
+                                "output": {
+                                    "exp": "${i}*${j}=${i*j}"
+                                }
                             }
                         }
+
                     }
-                    
+                }
+            },
+
+
+            "sendMail": {
+                "type": "net.mail",
+                "input": {
+                    "to": "obpt@sina.com",
+                    "title": "${val}*${val}乘法表_${DateTime.Now.ToString(\"yyyyMMdd\")}",
+                    "body": "${content}"
                 }
             }
-        },
-        
-        
-        "sendMail": {
-            "type": "net.mail",
-            "input": {
-                "to": "obpt@sina.com",
-                "title": "${val}*${val}乘法表_${DateTime.Now.ToString(\"yyyyMMdd\")}",
-                "body": "${content}"
-            }
         }
+    },
+    "teardown": {
+
+
     }
+   
 }

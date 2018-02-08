@@ -39,11 +39,125 @@ namespace System.Workflows
 
         public string Description { get; set; }
     }
-    public class ActionEntry
+    public sealed class ActionEntry
     {
         public ActionMeta Meta { get; set; }
 
         public IAction Action { get; set; }
+    }
+
+    public static class ActionUtility
+    {
+        public static ISwitch ParseSwitch(string exp)
+        {
+            if (string.IsNullOrEmpty(exp)) return null;
+            return null;
+        }
+        public static IActionValueInfo ParseActionValues(string name, object value)
+        {
+            if (value is string)
+            {
+                string str = value as string;
+                var match = Regex.Match(str, @"\${(?<exp>.+)}", RegexOptions.Singleline);
+                if (match.Success)
+                {
+                    return new TranslateValueInfo()
+                    {
+                        Name = name,
+                        Expression = match.Groups["exp"].Value
+                    };
+                }
+                else
+                {
+                    return new OriginalValueInfo()
+                    {
+                        Name = name,
+                        Value = str
+                    };
+                }
+            }
+            else
+            {
+                return new OriginalValueInfo()
+                {
+                    Name = name,
+                    Value = value
+                };
+            }
+        }
+        public static List<IActionValueInfo> ParseActionValues(Dictionary<string, object> inputs)
+        {
+            if (inputs == null) return null;
+            return inputs.Select(p => ParseActionValues(p.Key, p.Value)).ToList();
+        }
+        public static Dictionary<string, object> GetInputArguments(ActionEntry action, List<IActionValueInfo> inputs, IActionContext context)
+        {
+            Dictionary<string, object> inputValues = new Dictionary<string, object>();
+            foreach (var inputMeta in action.Meta.Parameters ?? new List<ActionInputMeta>())
+            {
+                var input = (inputs ?? new List<IActionValueInfo>()).SingleOrDefault(p => p.Name == inputMeta.Name);
+                if (input == null)
+                {
+                    if (inputMeta.DefaultValue == null)
+                    {
+                        if (inputMeta.IsRequired)
+                        {
+                            throw new ActionException($"参数[{input.Name}]是必须的。");
+                        }
+                    }
+                    else
+                    {
+                        inputValues.Add(inputMeta.Name, Convert.ChangeType(inputMeta.DefaultValue, inputMeta.Type));
+                    }
+                }
+                else
+                {
+                    var value = input.GetValue(context);
+                    inputValues.Add(inputMeta.Name, Convert.ChangeType(value, inputMeta.Type));
+                }
+            }
+            return inputValues;
+        }
+
+        public static void SetInputArguments(ActionEntry action, Dictionary<string, object> values, IActionContext context)
+        {
+            if (values == null || values.Count == 0) return;
+            if (action.Meta.Kind == ActionKind.Action)
+            {
+                var propMaps = action.Action.GetType().GetProperties().ToDictionary((p) =>
+                {
+                    var att = Attribute.GetCustomAttribute(p, typeof(ActionInputAttribute)) as ActionInputAttribute;
+                    return att == null ? p.Name : att.Name;
+
+                });
+                foreach (var val in values)
+                {
+                    if (propMaps.ContainsKey(val.Key))
+                    {
+                        propMaps[val.Key].SetValue(action.Action, val.Value, null);
+                    }
+                }
+            }
+            else
+            {
+                foreach (var kv in values)
+                {
+                    context.Inputs[kv.Key] = kv.Value;
+                }
+            }
+        }
+
+
+    }
+    public static class ActionTask
+    {
+        public static ActionResult Run(ActionEntry entry, List<IActionValueInfo> inputs, IActionContext context)
+        {
+            var arguments = ActionUtility.GetInputArguments(entry, inputs, context);
+            ActionUtility.SetInputArguments(entry, arguments, context);
+            return entry.Action.Exec(context);
+
+        }
     }
 
     public interface IActionFactoryService
@@ -68,6 +182,33 @@ namespace System.Workflows
             get { return this.refName; }
         }
         public string Description { get; set; }
+
+        public string DisplayFormat { get; set; }
+
+        public static ActionMeta GetActionMeta(Type type)
+        {
+            ActionAttribute actionAttr = Attribute.GetCustomAttribute(type, typeof(ActionAttribute)) as ActionAttribute;
+            var inputs = from p in type.GetProperties()
+                         let actionInputAttr = Attribute.GetCustomAttribute(type, typeof(ActionInputAttribute)) as ActionInputAttribute
+                         where actionInputAttr != null
+                         select new ActionInputMeta()
+                         {
+                             Name = actionInputAttr.Name,
+                             DefaultValue = actionInputAttr.Name,
+                             Description = actionInputAttr.Description,
+                             IsRequired = actionInputAttr.IsRequired,
+                             Type = p.PropertyType
+                         };
+            return new ActionMeta()
+            {
+                Ref = actionAttr.RefName,
+                Description = actionAttr.Description,
+                DisplayFormat = actionAttr.DisplayFormat,
+                Kind = ActionKind.Action,
+                Parameters = inputs.ToList()
+            };
+
+        }
     }
 
     [AttributeUsage(AttributeTargets.Property, Inherited = true, AllowMultiple = false)]
@@ -97,7 +238,8 @@ namespace System.Workflows
             var action = Activator.CreateInstance(type) as IAction;
             return new ActionEntry()
             {
-                Action = action
+                Action = action,
+                Meta = ActionAttribute.GetActionMeta(type)
             };
         }
 
@@ -110,6 +252,17 @@ namespace System.Workflows
     public class WorkflowJsonSerializer : IActionSerializer
     {
         public const string ContentType = "workflow/json";
+
+        private static Dictionary<string, Type> typeMaps = new Dictionary<string, Type>()
+        {
+            {"int",typeof(int) },
+            {"string",typeof(string) },
+            {"double",typeof(double) },
+            {"float",typeof(float) },
+            {"decimal",typeof(decimal) },
+            {"datetime",typeof(DateTime) },
+            {"timespan",typeof(TimeSpan) },
+        };
 
         public ActionEntry DeSerialize(string content)
         {
@@ -133,13 +286,14 @@ namespace System.Workflows
                     Kind = ActionKind.Workflow,
                     Description = workflowInfo.description,
                     DisplayFormat = workflowInfo.displayformat,
-                    Parameters = parameters.ToList()
-
+                    Parameters = parameters.ToList(),
                 },
                 Action = new WorkFlow()
                 {
-
-                }  
+                    Body = BuildChain(workflowInfo.body),
+                    Setup = BuildChain(workflowInfo.setup),
+                    Teardown = BuildChain(workflowInfo.teardown),
+                }
             };
 
         }
@@ -147,90 +301,41 @@ namespace System.Workflows
 
         private Type GetTypeByName(string typeName)
         {
+            Type res;
+            if (typeMaps.TryGetValue(typeName, out res))
+            {
+                return res;
+            }
             return Type.GetType(typeName);
 
         }
-        private List<IActionInput> GetInputs(Dictionary<string,object> inputs)
-        {
-            List<IActionInput> res = new List<IActionInput>();
-            if (inputs != null)
-            {
-                foreach (var kv in inputs)
-                {
-                    if (kv.Value is string)
-                    {
-                        string str = kv.Value as string;
-                        if (Regex.IsMatch(str, @"\${.+}"))
-                        {
-                            res.Add(new TranslateValueArgument()
-                            {
-                                Name = kv.Key,
-                                Expression = str
-                            });
-                        }
-                        else
-                        {
-                            res.Add(new OriginalValueArgument()
-                            {
-                                Name = kv.Key,
-                                Value = str
-                            });
-                        }
-                    }
-                    else
-                    {
-                        res.Add(new OriginalValueArgument()
-                        {
-                             Name=kv.Key,
-                             Value=kv.Value
-                        });
-                    }
-                }
-            }
-            return res;
-        }
 
-        private List<IActionOutput> GetOutputs(Dictionary<string, object> outputs)
+        private ActionChain BuildChain(ChainInfo chainInfo)
         {
-            List<IActionOutput> res = new List<IActionOutput>();
-            if (outputs != null)
-            {
-                foreach (var kv in outputs)
-                {
-                    if (kv.Value is string)
-                    {
-                        string str = kv.Value as string;
-                        if (Regex.IsMatch(str, @"\${.+}"))
-                        {
-                            res.Add(new TranslateValueArgument()
-                            {
-                                Name = kv.Key,
-                                Expression = str
-                            });
-                        }
-                        else
-                        {
-                            res.Add(new OriginalValueArgument()
-                            {
-                                Name = kv.Key,
-                                Value = str
-                            });
-                        }
-                    }
-                    else
-                    {
-                        res.Add(new OriginalValueArgument()
-                        {
-                            Name = kv.Key,
-                            Value = kv.Value
-                        });
-                    }
-                }
-            }
-            return res;
+            if (chainInfo == null) return null;
+            return BuildChain(chainInfo.entry, chainInfo.actions, new Dictionary<string, Workflows.ActionChain>());
         }
-        private ActionChain BuildChain(string entry, Dictionary<string, ActionInfo> actions)
+        private ActionChainGroup BuildGroup(TaskGroup group, Dictionary<string, ActionInfo> actions, Dictionary<string, ActionChain> maps)
         {
+            if (group == null) return null;
+            SwitchKind kind = group.kind == "single" ? SwitchKind.Single : SwitchKind.Mutile;
+            var ac = from p in @group.tasks ?? Enumerable.Empty<Task>()
+                     select new ActionChainWrapper()
+                     {
+                         ActionChain = BuildChain(p.name, actions, maps),
+                         Switch = ActionUtility.ParseSwitch(p.@switch)
+                     };
+
+            return new ActionChainGroup()
+            {
+                SwitchKind = kind,
+                Actions = ac.ToList()
+            };
+        }
+        private ActionChain BuildChain(string entry, Dictionary<string, ActionInfo> actions, Dictionary<string, ActionChain> maps)
+        {
+            if (string.IsNullOrEmpty(entry)) return null;
+            if (maps.ContainsKey(entry)) return maps[entry];
             if (!actions.ContainsKey(entry))
             {
                 throw new ActionException($"不存在{entry}");
@@ -240,9 +345,12 @@ namespace System.Workflows
             {
                 ActionRef = info.type,
                 Name = entry,
-                 Inputs=GetInputs(info.input),
-                  Outputs= GetOutputs(info.output),
-                // Inputs=
+                Inputs = ActionUtility.ParseActionValues(info.input),
+                Outputs = ActionUtility.ParseActionValues(info.output),
+                OnCompleted = BuildGroup(info.oncompleted, actions, maps),
+                OnErrors = BuildGroup(info.onerror, actions, maps),
+                OnSuccess = BuildGroup(info.onsuccess, actions, maps),
+                SubEntry = BuildChain(info.entry, info.actions, new Dictionary<string, ActionChain>()),
             };
 
             return chain;
@@ -257,9 +365,18 @@ namespace System.Workflows
         {
             public string name { get; set; }
             public string description { get; set; }
-
             public string displayformat { get; set; }
             public Dictionary<string, ParameterInfo> parameters { get; set; }
+
+            public ChainInfo setup { get; set; }
+
+            public ChainInfo body { get; set; }
+
+            public ChainInfo teardown { get; set; }
+        }
+
+        class ChainInfo
+        {
             public string entry { get; set; }
             public Dictionary<string, ActionInfo> actions { get; set; }
         }
@@ -271,8 +388,6 @@ namespace System.Workflows
             public bool required { get; set; }
             public string description { get; set; }
         }
-
-
 
         class ActionInfo
         {
@@ -286,9 +401,6 @@ namespace System.Workflows
             public Dictionary<string, ActionInfo> actions { get; set; }
         }
 
-
-
-
         class TaskGroup
         {
             public string kind { get; set; }
@@ -300,24 +412,6 @@ namespace System.Workflows
             public string @switch { get; set; }
             public string name { get; set; }
         }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
         #endregion
     }

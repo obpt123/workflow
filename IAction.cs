@@ -9,12 +9,12 @@ namespace System.Workflows
     /// <summary>
     /// Action 执行的上下文
     /// </summary>
-    public interface IActionContext:IDisposable , IServiceProvider
+    public interface IActionContext : IDisposable, IServiceProvider
     {
+        int Depth { get; }
         IActionContext Parent { get; }
         Dictionary<string, object> Inputs { get; set; }
-        Dictionary<string,object> Vars { get; set; }
-        Dictionary<string,object> Outputs { get; set; }
+        Dictionary<string, object> Vars { get; set; }
 
         List<IActionContext> SubContexts { get; }
         IActionContext BeginContext();
@@ -22,27 +22,28 @@ namespace System.Workflows
         bool ReleaseContext(IActionContext context);
 
         Dictionary<string, object> GetContextValues();
-        
+
     }
     public interface IServiceProvider
     {
         T GetService<T>();
     }
     public class ActionContext : IActionContext
+
     {
+        private Dictionary<Type, object> services = new Dictionary<Type, object>();
         public Dictionary<string, object> Inputs { get; set; } = new Dictionary<string, object>();
-        public Dictionary<string, object> Outputs { get; set; } = new Dictionary<string, object>();
         public Dictionary<string, object> Vars { get; set; } = new Dictionary<string, object>();
         public IActionContext Parent { get; private set; }
         public List<IActionContext> SubContexts { get; private set; } = new List<IActionContext>();
 
-
-       
+        public int Depth { get; private set; } = 1;
 
         public IActionContext BeginContext()
         {
             ActionContext context = new ActionContext();
             context.Parent = this;
+            context.Depth = this.Depth + 1;
             return context;
         }
 
@@ -61,12 +62,49 @@ namespace System.Workflows
 
         public T GetService<T>()
         {
-            throw new NotImplementedException();
+            object instance;
+            if (this.services.TryGetValue(typeof(T), out instance))
+            {
+                return (T)instance;
+            }
+            else
+            {
+                if (this.Parent != null)
+                {
+                    return this.Parent.GetService<T>();
+                }
+                else
+                {
+                    return default(T);
+                }
+            }
         }
 
+        public void RegistService<T>(T instance)
+        {
+            this.services[typeof(T)] = instance;
+        }
         public Dictionary<string, object> GetContextValues()
         {
-            throw new NotImplementedException();
+            Dictionary<string, object> res = new Dictionary<string, object>();
+            IActionContext current = this;
+            while (current != null)
+            {
+                MergeDic(current.Vars, res);
+                MergeDic(current.Inputs, res);
+                current = current.Parent;
+            }
+            return res;
+        }
+        private void MergeDic(Dictionary<string, object> from, Dictionary<string, object> to)
+        {
+            foreach (var kv in from)
+            {
+                if (!to.ContainsKey(kv.Key))
+                {
+                    to[kv.Key] = kv.Value;
+                }
+            }
         }
     }
     /// <summary>
@@ -108,6 +146,7 @@ namespace System.Workflows
         public ActionResult(object result)
         {
             this.Result = result;
+            this.IsSuccess = true;
         }
         /// <summary>
         /// 执行过程的错误
@@ -118,11 +157,11 @@ namespace System.Workflows
         /// </summary>
         public object Result { get; set; }
 
-        public bool IsSuccess { get { return this.Error != null; } }
+        public bool IsSuccess { get; set; }
 
         public static ActionResult FromContext(IActionContext context)
         {
-            return new ActionResult();
+            return new ActionResult(context.GetContextValues());
         }
 
     }
@@ -133,18 +172,13 @@ namespace System.Workflows
     {
         ActionResult Exec(IActionContext context);
     }
-    /// <summary>
-    /// 表示Action的执行入口
-    /// </summary>
-
-
-    public interface IActionInput
+    public interface IActionValueInfo
     {
         string Name { get; set; }
         object GetValue(IActionContext context);
     }
 
-    public class OriginalValueArgument : IActionInput, IActionOutput
+    public class OriginalValueInfo : IActionValueInfo
     {
         public string Name { get; set; }
 
@@ -155,7 +189,7 @@ namespace System.Workflows
             return Value;
         }
     }
-    public class TranslateValueArgument : IActionInput, IActionOutput
+    public class TranslateValueInfo : IActionValueInfo
     {
         public string Name { get; set; }
 
@@ -167,14 +201,7 @@ namespace System.Workflows
         }
     }
 
-    public interface IActionOutput
-    {
-        string Name { get; set; }
 
-
-        object GetValue(IActionContext context);
-
-    }
 
 
     public class ActionChain
@@ -183,31 +210,27 @@ namespace System.Workflows
         public ActionChainGroup OnSuccess { get; set; }
         public ActionChainGroup OnErrors { get; set; }
         public ActionChainGroup OnCompleted { get; set; }
-
         public string ActionRef { get; set; }
-
-        public List<IActionInput> Inputs { get; set; }
-
-        public List<IActionOutput> Outputs { get; set; }
-
+        public List<IActionValueInfo> Inputs { get; set; }
+        public List<IActionValueInfo> Outputs { get; set; }
         public ActionChain SubEntry { get; set; }
     }
 
-    public class ChainRunner
+    public class ChainUtility
     {
         public static void Run(ActionChain chain, IActionContext context)
         {
             var res = RunStep(chain, context);
-            //PublishOutput(res, context);
+            PublishOutput(chain, res, context);
             if (res.IsSuccess)
             {
-                RunActionGroup(chain.OnSuccess, context,res);
+                RunActionGroup(chain.OnSuccess, context, res);
             }
             else
             {
-                RunActionGroup(chain.OnErrors, context,res);
+                RunActionGroup(chain.OnErrors, context, res);
             }
-            RunActionGroup(chain.OnCompleted, context,res);
+            RunActionGroup(chain.OnCompleted, context, res);
         }
         private static ActionResult RunStep(ActionChain chain, IActionContext context)
         {
@@ -221,50 +244,35 @@ namespace System.Workflows
                 {
                     (action.Action as IChainEntry).Entry = chain.SubEntry;
                 }
-                var inputValues = GetInputArguments(action, chain, context);
+                var inputValues = ActionUtility.GetInputArguments(action, chain.Inputs, context);
                 if (action.Meta.Kind == ActionKind.Workflow)
                 {
                     using (var newcontext = context.BeginContext())
                     {
-                        foreach (var kv in inputValues)
-                        {
-                            newcontext.Inputs[kv.Key] = kv.Value;
-                        }
+                        ActionUtility.SetInputArguments(action, inputValues, newcontext);
                         var res = action.Action.Exec(newcontext);
                         return res;
                     }
                 }
                 else
                 {
-                    var propMaps= action.Action.GetType().GetProperties().ToDictionary((p) =>
-                    {
-                        var att = Attribute.GetCustomAttribute(p, typeof(ActionInputAttribute)) as ActionInputAttribute;
-                        return att == null ? p.Name : att.Name;
-
-                    });
-                    foreach (var val in inputValues)
-                    {
-                        if (propMaps.ContainsKey(val.Key))
-                        {
-                            propMaps[val.Key].SetValue(action.Action, val.Value, null);
-                        }
-                    }
+                    ActionUtility.SetInputArguments(action, inputValues, context);
                     var res = action.Action.Exec(context);
                     return res;
                 }
 
-               
+
             }
             catch (Exception ex)
             {
-                var r = new ActionResult()
+                return new ActionResult()
                 {
-                    Error = ex
+                    Error = ex,
+                    IsSuccess = false,
                 };
-                return r;
             }
         }
-        private static void RunActionGroup(ActionChainGroup group, IActionContext context,ActionResult res)
+        private static void RunActionGroup(ActionChainGroup group, IActionContext context, ActionResult res)
         {
             if (group == null || group.Actions == null) return;
             foreach (var chainWrap in group.Actions)
@@ -281,53 +289,20 @@ namespace System.Workflows
                 }
             }
         }
-
-
-
-        private static Dictionary<string, object> GetInputArguments(ActionEntry action,ActionChain step, IActionContext context)
-        {
-            Dictionary<string, object> inputValues = new Dictionary<string, object>();
-            foreach (var inputMeta in action.Meta.Parameters ?? new List<ActionInputMeta>())
-            {
-                var input = step.Inputs.SingleOrDefault(p => p.Name == inputMeta.Name);
-                if (input == null)
-                {
-                    if (inputMeta.DefaultValue == null)
-                    {
-                        if (inputMeta.IsRequired)
-                        {
-                            throw new ActionException($"参数[{input.Name}]是必须的。");
-                        }
-                    }
-                    else
-                    {
-                        inputValues.Add(inputMeta.Name, Convert.ChangeType(inputMeta.DefaultValue, inputMeta.Type));
-                    }
-                }
-                else
-                {
-                    var value = input.GetValue(context);
-                    inputValues.Add(inputMeta.Name, Convert.ChangeType(value, inputMeta.Type));
-                }
-            }
-            return inputValues;
-        }
-
-        private void PublishOutput(ActionChain chain,ActionResult result, IActionContext context)
+        private static void PublishOutput(ActionChain chain, ActionResult result, IActionContext context)
         {
 
             PublishLastRes(context, result);
-            foreach (var output in chain.Outputs??new List<IActionOutput>())
+            foreach (var output in chain.Outputs ?? new List<IActionValueInfo>())
             {
                 var val = output.GetValue(context);
                 context.Vars[output.Name] = val;
-                //output.Output(result, context);
             }
         }
         private static void PublishLastRes(IActionContext context, ActionResult res)
         {
-            context.Vars["last_val"] = res.Result;
-            context.Vars["last_err"] = res.Error;
+            context.Vars["lastvalue"] = res.Result;
+            context.Vars["lasterror"] = res.Error;
             context.Vars["last"] = res;
         }
     }
@@ -348,30 +323,35 @@ namespace System.Workflows
     public class WorkFlow : IAction
     {
         public ActionChain Setup { get; set; }
-
         public ActionChain Teardown { get; set; }
-        public ActionChain Entry { get;  set; }
-
-
+        public ActionChain Body { get; set; }
         public ActionResult Exec(IActionContext context)
         {
             try
             {
-                ChainRunner.Run(this.Setup, context);
-                ChainRunner.Run(this.Entry, context);
+                ChainUtility.Run(this.Setup, context);
+                ChainUtility.Run(this.Body, context);
             }
             finally
             {
-                ChainRunner.Run(this.Teardown, context);
+                ChainUtility.Run(this.Teardown, context);
             }
             return ActionResult.FromContext(context);
         }
-
     }
 
     public interface IChainEntry
     {
         ActionChain Entry { get; set; }
+    }
+
+    public class Group : IAction, IChainEntry
+    {
+        public ActionChain Entry { get; set; }
+        public ActionResult Exec(IActionContext context)
+        {
+            return null;
+        }
     }
 
 
@@ -385,7 +365,7 @@ namespace System.Workflows
             List<Dictionary<string, object>> res = new List<Dictionary<string, object>>();
             if (Source != null)
             {
-                foreach(var item in Source)
+                foreach (var item in Source)
                 {
                     using (var newcontext = context.BeginContext())
                     {
@@ -393,7 +373,7 @@ namespace System.Workflows
                         {
                             newcontext.Vars[ItemName] = item;
                         }
-                        ChainRunner.Run(this.Entry, newcontext);
+                        ChainUtility.Run(this.Entry, newcontext);
                         res.Add(context.GetContextValues());
                     }
                 }
@@ -402,12 +382,11 @@ namespace System.Workflows
         }
     }
 
-    public sealed class For : IAction
+    public sealed class For : IAction, IChainEntry
     {
         public int Start { get; set; }
         public int Count { get; set; }
         public int Step { get; set; }
-
         public string ItemName { get; set; }
         public ActionChain Entry { get; set; }
         public ActionResult Exec(IActionContext context)
@@ -421,7 +400,7 @@ namespace System.Workflows
                     {
                         newcontext.Vars[ItemName] = val;
                     }
-                    ChainRunner.Run(this.Entry, newcontext);
+                    ChainUtility.Run(this.Entry, newcontext);
                     res.Add(context.GetContextValues());
                 }
             }
@@ -433,20 +412,37 @@ namespace System.Workflows
     public enum SwitchKind
     {
         /// <summary>
-        /// 单条分支
-        /// </summary>
-        Single,
-        /// <summary>
         /// 多条分支
         /// </summary>
-        Mutile
+        Mutile=0,
+        /// <summary>
+        /// 单条分支
+        /// </summary>
+        Single=1,
+       
     }
 
 
     public interface IActionTraceService
     {
-        void TraceResult(IActionContext context,ActionResult result);
-        
+        void TraceResult(TraceContext context);
+
+    }
+
+    public class TraceContext
+    {
+        IActionContext ActionContext { get; set; }
+        public int Depth { get; set; }
+
+        public string ActionRef { get; set; }
+
+        public string ActionName { get; set; }
+
+        public Dictionary<string,object> InputValues { get; set; }
+
+        public Dictionary<string,object> OutputValues { get; set; }
+
+        public ActionResult Result { get; set; }
     }
 
 
