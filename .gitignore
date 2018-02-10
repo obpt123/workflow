@@ -1,1 +1,3 @@
 /obj/Debug
+/bin/Debug/*.dll
+/bin/Debug/*.pdb

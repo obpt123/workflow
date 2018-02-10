@@ -42,13 +42,49 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="IAction.cs" />
-    <Compile Include="Meta\ActionMetaData.cs" />
+    <Compile Include="Base\ActionContext.cs" />
+    <Compile Include="Base\ActionTypeNameSerializer.cs" />
+    <Compile Include="Base\TraceContext.cs" />
+    <Compile Include="Base\WorkflowJsonSerializer.cs" />
+    <Compile Include="Core\ActionResult.cs" />
+    <Compile Include="Core\ActionEntry.cs" />
+    <Compile Include="Core\ActionException.cs" />
+    <Compile Include="Base\DefaultSwitch.cs" />
+    <Compile Include="Core\IActionContext.cs" />
+    <Compile Include="Core\IActionFactory.cs" />
+    <Compile Include="Core\IActionSerializer.cs" />
+    <Compile Include="Core\IActionTraceService.cs" />
+    <Compile Include="Core\ITraceContext.cs" />
+    <Compile Include="Meta\ActionAttribute.cs" />
+    <Compile Include="Meta\ActionInputAttribute.cs" />
+    <Compile Include="Meta\ActionInputMeta.cs" />
+    <Compile Include="Meta\ActionKind.cs" />
+    <Compile Include="Meta\ActionMeta.cs" />
+    <Compile Include="Dynamic.Linq\Dynamic.cs" />
+    <Compile Include="Base\OriginalValueInfo.cs" />
+    <Compile Include="Base\ExpressionValueInfo.cs" />
+    <Compile Include="Core\IAction.cs" />
+    <Compile Include="Core\IActionValueInfo.cs" />
+    <Compile Include="Core\IServiceProvider.cs" />
+    <Compile Include="Core\ISwitch.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Utils\ActionTask.cs" />
+    <Compile Include="Utils\ActionUtility.cs" />
+    <Compile Include="Utils\ChainUtility.cs" />
+    <Compile Include="Workflow\ActionChain.cs" />
+    <Compile Include="Workflow\ActionChainGroup.cs" />
+    <Compile Include="Workflow\ActionChainWrapper.cs" />
+    <Compile Include="Workflow\Actions\For.cs" />
+    <Compile Include="Workflow\Actions\Group.cs" />
+    <Compile Include="Workflow\Actions\Loop.cs" />
+    <Compile Include="Workflow\IChainEntry.cs" />
+    <Compile Include="Workflow\SwitchKind.cs" />
+    <Compile Include="Workflow\WorkFlow.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="json1.json" />
   </ItemGroup>
+  <ItemGroup />
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
        Other similar extension points exist, see Microsoft.Common.targets.

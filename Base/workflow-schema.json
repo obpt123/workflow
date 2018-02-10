@@ -1,0 +1,54 @@
+﻿{
+	"$schema": "http://json-schema.org/draft-04/schema",
+	"title": "JSON Schema for workflow file",
+
+	"type": "object",
+
+    "properties": {
+        "meta": {
+            "type": "object",
+            "description": "the meta info of the workflow",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "the name of the workflow",
+                    "pattern": "\\w+"
+                },
+                "description": {
+                    "type": "string",
+                    "description": "the description of the workflow"
+                },
+                "displayformat": {
+                    "type": "string",
+                    "description": "the display format of the workflow"
+                },
+                "inputdefines": {
+                    "type": "object"
+                     
+                }
+            },
+             "required": ["name"]
+        },
+        "versions": {
+            "type": "array",
+            "description": "An array of version numbers.",
+            "minItems": 1,
+            "items": {
+                "type": "number"
+            }
+        }
+    },
+    "required": [ "meta" ],
+    "definitions": {
+        "inputinfo": {
+            "type": "object",
+            "properties": {
+                "type": {
+                    "type": "string"
+                }
+            },
+            "required": ["type"]
+        }
+    }
+
+}
