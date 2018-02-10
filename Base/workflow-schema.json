@@ -63,6 +63,11 @@
                     "minLength": 1
                 },
                 "actions": {
+                    "patternProperties": {
+                        "\\w+": {
+
+                        }
+                    },
                     "maxProperties": 9999
                 }
             },

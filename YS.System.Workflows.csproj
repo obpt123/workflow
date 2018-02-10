@@ -74,9 +74,11 @@
     <Compile Include="Workflow\ActionChain.cs" />
     <Compile Include="Workflow\ActionChainGroup.cs" />
     <Compile Include="Workflow\ActionChainWrapper.cs" />
+    <Compile Include="Workflow\Actions\Filter.cs" />
     <Compile Include="Workflow\Actions\For.cs" />
     <Compile Include="Workflow\Actions\Group.cs" />
     <Compile Include="Workflow\Actions\Loop.cs" />
+    <Compile Include="Workflow\Actions\While.cs" />
     <Compile Include="Workflow\IChainEntry.cs" />
     <Compile Include="Workflow\SwitchKind.cs" />
     <Compile Include="Workflow\WorkFlow.cs" />
