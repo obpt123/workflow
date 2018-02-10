@@ -82,6 +82,7 @@
     <Compile Include="Workflow\WorkFlow.cs" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="Base\workflow-schema.json" />
     <None Include="json1.json" />
   </ItemGroup>
   <ItemGroup />

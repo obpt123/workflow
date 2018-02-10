@@ -1,5 +1,6 @@
 ﻿{
-    
+    "$schema": "base/workflow-schema.json#",
+
     "meta": {
         "name": "demo.num",
         "description": "数字乘法表",
@@ -10,10 +11,13 @@
                 "default": 5,
                 "required": true,
                 "description": "参数值"
+            },
+            "1": {
+                "type": "s"
             }
         }
     },
-    
+
     "setup": {
 
     },

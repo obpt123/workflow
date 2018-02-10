@@ -1,9 +1,7 @@
 ﻿{
-	"$schema": "http://json-schema.org/draft-04/schema",
-	"title": "JSON Schema for workflow file",
-
-	"type": "object",
-
+    "$schema": "http://json-schema.org/draft-04/schema",
+    "title": "JSON Schema for workflow file",
+    "type": "object",
     "properties": {
         "meta": {
             "type": "object",
@@ -23,22 +21,29 @@
                     "description": "the display format of the workflow"
                 },
                 "inputdefines": {
-                    "type": "object"
-                     
+                    "type": "object",
+                    "additionalProperties": false,
+                    "patternProperties": {
+                        "\\w+": {
+                            "$ref": "#/definitions/inputinfo"
+                        }
+                    },
+                    "maxProperties": 99
                 }
             },
-             "required": ["name"]
+            "required": [ "name" ]
         },
-        "versions": {
-            "type": "array",
-            "description": "An array of version numbers.",
-            "minItems": 1,
-            "items": {
-                "type": "number"
-            }
+        "body": {
+            "$ref": "#/definitions/chaininfo"
+        },
+        "setup": {
+            "$ref": "#/definitions/chaininfo"
+        },
+        "teardown": {
+            "$ref": "#/definitions/chaininfo"
         }
     },
-    "required": [ "meta" ],
+    "required": [ "meta", "body" ],
     "definitions": {
         "inputinfo": {
             "type": "object",
@@ -47,7 +52,22 @@
                     "type": "string"
                 }
             },
-            "required": ["type"]
+            "required": [ "type" ]
+        },
+        "chaininfo": {
+            "type": "object",
+            "properties": {
+                "entry": {
+                    "type": "string",
+                    "pattern": "\\w+",
+                    "minLength": 1
+                },
+                "actions": {
+                    "maxProperties": 9999
+                }
+            },
+            "required": [ "entry", "actions" ]
+
         }
     }
 
